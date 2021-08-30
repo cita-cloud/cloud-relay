@@ -1,0 +1,24 @@
+[package]
+name = "cloud-relay"
+authors = ["Yieazy <yuitta@163.com>"]
+description = "relay message from client to chain"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+hyper = { version = "0.14", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
+pretty_env_logger = "0.4"
+futures-util = "0.3.16"
+bytes = "1.1.0"
+serde_json = "1.0.67"
+cita_cloud_proto = { git = "https://github.com/cita-cloud/cita_cloud_proto", branch = "dev-v6.2.0" }
+tonic = "0.5"
+efficient-sm2 = "0.1.4"
+hex = "0.4.3"
+libsm = "0.4.1"
+rand = "0.8"
+clap = "3.0.0-beta.2"
+prost = "0.8"
