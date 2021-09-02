@@ -28,7 +28,8 @@ use cita_cloud_proto::{
 use efficient_sm2::KeyPair;
 use prost::Message;
 use rand::{thread_rng, Rng};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tonic::transport::{Channel, Endpoint};
 
 pub const STORE_ADDRESS: &str = "ffffffffffffffffffffffffffffffffff010000";
@@ -171,9 +172,10 @@ impl Client {
         let (raw_tx, tx_hash) = self.build_raw_transaction(tx);
 
         // self.send_raw_transaction(raw_tx).await
-        {
-            self.raw_txs.write().unwrap().body.push(raw_tx);
-        }
+        let client_raw_txs = self.raw_txs.clone();
+        tokio::spawn(async move {
+            client_raw_txs.write().await.body.push(raw_tx);
+        });
         tx_hash
     }
 

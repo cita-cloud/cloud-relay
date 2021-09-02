@@ -127,7 +127,7 @@ async fn main() -> Result<()> {
             interval.tick().await;
             {
                 let raw_tx = {
-                    let mut wr = work_client.raw_txs.write().unwrap();
+                    let mut wr = work_client.raw_txs.write().await;
                     mem::take(&mut *wr)
                 };
                 if !raw_tx.body.is_empty() {
