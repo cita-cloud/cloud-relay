@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![allow(dead_code)]
+
 use crate::sm::{sm2_sign, sm3_hash};
 use crate::util::pk2address;
+use cita_cloud_proto::blockchain::RawTransactions;
 use cita_cloud_proto::{
     blockchain::{
         raw_transaction::Tx, RawTransaction, Transaction, UnverifiedTransaction, Witness,
@@ -25,6 +28,7 @@ use cita_cloud_proto::{
 use efficient_sm2::KeyPair;
 use prost::Message;
 use rand::{thread_rng, Rng};
+use std::sync::{Arc, RwLock};
 use tonic::transport::{Channel, Endpoint};
 
 pub const STORE_ADDRESS: &str = "ffffffffffffffffffffffffffffffffff010000";
@@ -35,6 +39,7 @@ pub struct Client {
     evm: Evm<Channel>,
 
     key_pair: KeyPair,
+    pub(crate) raw_txs: Arc<RwLock<RawTransactions>>,
 }
 
 impl Client {
@@ -57,12 +62,14 @@ impl Client {
         };
 
         let key_pair = KeyPair::new(&hex::decode(priv_kay).unwrap()).unwrap();
+        let raw_txs = Arc::new(RwLock::new(RawTransactions { body: vec![] }));
 
         Self {
             controller,
             evm,
 
             key_pair,
+            raw_txs,
         }
     }
 
@@ -93,7 +100,7 @@ impl Client {
         }
     }
 
-    fn build_raw_transaction(&self, tx: Transaction) -> RawTransaction {
+    fn build_raw_transaction(&self, tx: Transaction) -> (RawTransaction, Vec<u8>) {
         // calc tx hash
         let tx_hash = {
             // build tx bytes
@@ -125,7 +132,7 @@ impl Client {
             }
         };
 
-        raw_tx
+        (raw_tx, tx_hash.to_vec())
     }
 
     async fn send_raw_transaction(&self, raw: RawTransaction) -> Vec<u8> {
@@ -136,6 +143,14 @@ impl Client {
             .unwrap()
             .into_inner()
             .hash
+    }
+
+    pub(crate) async fn send_raw_transactions(&self, raws: RawTransactions) {
+        self.controller
+            .clone()
+            .send_raw_transactions(raws)
+            .await
+            .unwrap();
     }
 
     pub async fn auto_send_store_transaction(&mut self) -> Vec<u8> {
@@ -153,9 +168,13 @@ impl Client {
                 value.to_vec(),
             )
             .await;
-        let raw_tx = self.build_raw_transaction(tx);
+        let (raw_tx, tx_hash) = self.build_raw_transaction(tx);
 
-        self.send_raw_transaction(raw_tx).await
+        // self.send_raw_transaction(raw_tx).await
+        {
+            self.raw_txs.write().unwrap().body.push(raw_tx);
+        }
+        tx_hash
     }
 
     pub async fn block_number(&mut self) -> u64 {

@@ -25,6 +25,8 @@ use hyper::{
     service::{make_service_fn, service_fn},
     Body, Server,
 };
+use std::mem;
+use tokio::time::{self, Duration};
 
 type GenericError = Box<dyn std::error::Error + Send + Sync>;
 type Result<T> = std::result::Result<T, GenericError>;
@@ -117,6 +119,23 @@ async fn main() -> Result<()> {
         .to_string();
 
     let client = Client::new(controller_addr, evm_addr, priv_key);
+
+    let work_client = client.clone();
+    tokio::spawn(async move {
+        let mut interval = time::interval(Duration::from_secs(1));
+        loop {
+            interval.tick().await;
+            {
+                let raw_tx = {
+                    let mut wr = work_client.raw_txs.write().unwrap();
+                    mem::take(&mut *wr)
+                };
+                if !raw_tx.body.is_empty() {
+                    work_client.send_raw_transactions(raw_tx).await;
+                }
+            }
+        }
+    });
 
     let new_service = make_service_fn(move |_| {
         let client = client.clone();
