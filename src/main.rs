@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![deny(warnings)]
+// #![deny(warnings)]
 
 mod grpc;
 mod sm;
@@ -118,14 +118,15 @@ async fn main() -> Result<()> {
         .unwrap_or("3ef2627393529fed043c7dbfd9358a4ae47a88a59949b07e7631722fd6959002")
         .to_string();
 
-    let client = Client::new(controller_addr, evm_addr, priv_key);
+    let client = Client::new(controller_addr, evm_addr, priv_key).await;
 
-    let work_client = client.clone();
+    let mut work_client = client.clone();
     tokio::spawn(async move {
         let mut interval = time::interval(Duration::from_secs(1));
         loop {
             interval.tick().await;
             {
+                *work_client.chain_height.write().await = work_client.block_number().await;
                 let raw_tx = {
                     let mut wr = work_client.raw_txs.write().await;
                     mem::take(&mut *wr)

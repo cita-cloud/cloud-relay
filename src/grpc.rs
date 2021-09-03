@@ -17,6 +17,7 @@
 use crate::sm::{sm2_sign, sm3_hash};
 use crate::util::pk2address;
 use cita_cloud_proto::blockchain::RawTransactions;
+use cita_cloud_proto::controller::SystemConfig;
 use cita_cloud_proto::{
     blockchain::{
         raw_transaction::Tx, RawTransaction, Transaction, UnverifiedTransaction, Witness,
@@ -41,11 +42,14 @@ pub struct Client {
 
     key_pair: KeyPair,
     pub(crate) raw_txs: Arc<RwLock<RawTransactions>>,
+
+    pub(crate) chain_height: Arc<RwLock<u64>>,
+    chain_system_config: SystemConfig,
 }
 
 impl Client {
-    pub fn new(controller_addr: String, evm_addr: String, priv_kay: String) -> Self {
-        let controller = {
+    pub async fn new(controller_addr: String, evm_addr: String, priv_kay: String) -> Self {
+        let mut controller = {
             let channel = Endpoint::from_shared(controller_addr)
                 .unwrap()
                 .connect_lazy()
@@ -65,12 +69,21 @@ impl Client {
         let key_pair = KeyPair::new(&hex::decode(priv_kay).unwrap()).unwrap();
         let raw_txs = Arc::new(RwLock::new(RawTransactions { body: vec![] }));
 
+        let chain_system_config = controller
+            .get_system_config(Empty {})
+            .await
+            .unwrap()
+            .into_inner();
+
         Self {
             controller,
             evm,
 
             key_pair,
             raw_txs,
+
+            chain_height: Arc::new(RwLock::new(0)),
+            chain_system_config,
         }
     }
 
@@ -80,24 +93,17 @@ impl Client {
         data: Vec<u8>,
         value: Vec<u8>,
     ) -> Transaction {
-        // get start block number
-        let start_block_number = self.block_number().await;
-        let sys_config = self
-            .controller
-            .get_system_config(Empty {})
-            .await
-            .unwrap()
-            .into_inner();
         let nonce = rand::random::<u64>().to_string();
+        let height = *self.chain_height.read().await;
         Transaction {
-            version: sys_config.version,
+            version: self.chain_system_config.version,
             to,
             nonce,
             quota: 3_000_000,
-            valid_until_block: start_block_number + 99,
+            valid_until_block: height + 99,
             data,
             value,
-            chain_id: sys_config.chain_id.to_vec(),
+            chain_id: self.chain_system_config.chain_id.to_vec(),
         }
     }
 
@@ -173,9 +179,8 @@ impl Client {
 
         // self.send_raw_transaction(raw_tx).await
         let client_raw_txs = self.raw_txs.clone();
-        tokio::spawn(async move {
-            client_raw_txs.write().await.body.push(raw_tx);
-        });
+        client_raw_txs.write().await.body.push(raw_tx);
+
         tx_hash
     }
 
